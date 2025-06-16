@@ -10,6 +10,12 @@ on:
       sources:
         required: true
         type: string
+      exclusions:
+        required: false
+        type: string
+      coverageExclusions:
+        required: false
+        type: string
     secrets:
       SONAR_TOKEN:
         required: true
@@ -19,6 +25,7 @@ on:
 jobs:
   sonarqube:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v3
 
@@ -31,3 +38,5 @@ jobs:
           args: >
             -Dsonar.projectKey=${{ inputs.projectKey }}
             -Dsonar.sources=${{ inputs.sources }}
+            -Dsonar.exclusions=${{ inputs.exclusions }}
+            -Dsonar.coverage.exclusions=${{ inputs.coverageExclusions }}
