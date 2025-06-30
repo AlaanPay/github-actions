@@ -1,4 +1,4 @@
-name: Daily Master Merges Report
+name: Daily Master Commits Report
 
 on:
   workflow_call:
@@ -14,27 +14,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Needed to access full commit history
+          fetch-depth: 0
 
-      - name: Get merge commits to master
+      - name: Get all commits to master in the last day
         run: |
           YESTERDAY=$(date -u -d "yesterday" +%Y-%m-%d)
           TODAY=$(date -u +%Y-%m-%d)
 
           git checkout master
 
-          git log --merges --since="$YESTERDAY 23:59" --until="$TODAY 23:59" \
-            --pretty=format:"| %h | %an | %s |" > merge_log.txt
+          git log --since="$YESTERDAY 23:59" --until="$TODAY 23:59" \
+            --pretty=format:"| %h | %an | %s |" > commit_log.txt
 
-          if [[ ! -s merge_log.txt ]]; then
-            echo "No merges today." > merge_log.txt
+          if [[ ! -s commit_log.txt ]]; then
+            echo "No commits today." > commit_log.txt
           else
             {
               echo "| Commit | Author | Message |"
               echo "|--------|--------|---------|"
-              cat merge_log.txt
+              cat commit_log.txt
             } > formatted_log.txt
-            mv formatted_log.txt merge_log.txt
+            mv formatted_log.txt commit_log.txt
           fi
 
       - name: Send Slack message
@@ -42,9 +42,9 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           REPO: ${{ github.repository }}
         run: |
-          MERGES=$(cat merge_log.txt)
+          COMMITS=$(cat commit_log.txt)
 
-          MESSAGE=$(printf "*📌 Daily Merge Report for \`$REPO\` → \`master\` branch*\n\`\`\`\n%s\n\`\`\`" "$MERGES")
+          MESSAGE=$(printf "*📌 Daily Commit Report for \`$REPO\` → \`master\` branch*\n\`\`\`\n%s\n\`\`\`" "$COMMITS")
 
           jq -n --arg text "$MESSAGE" '{text: $text}' \
             | curl -X POST -H 'Content-type: application/json' --data @- "$SLACK_WEBHOOK_URL"
