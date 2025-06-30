@@ -1,4 +1,4 @@
-name: Daily Master Commits Report (IST + PR links in text)
+name: Daily Master Commits Report (IST + PR Links in Column)
 
 on:
   workflow_call:
@@ -16,32 +16,33 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get all commits with PR links and IST time
+      - name: Generate commit report with IST and PR links
         run: |
           YESTERDAY=$(date -u -d "yesterday" +%Y-%m-%d)
           TODAY=$(date -u +%Y-%m-%d)
-          REPO_NAME=${GITHUB_REPOSITORY##*/}  # e.g., core
-          REPO_OWNER=${GITHUB_REPOSITORY%%/*} # e.g., AlaanPay
+          REPO_NAME=${GITHUB_REPOSITORY##*/}
+          REPO_OWNER=${GITHUB_REPOSITORY%%/*}
 
           git checkout master
 
           export TZ=Asia/Kolkata
 
-          echo "| Commit | Author | Time (IST) | Message |" > commit_log.txt
-          echo "|--------|--------|------------|---------|" >> commit_log.txt
+          echo "| Commit | Author | Time (IST) | Message | PR Link |" > commit_log.txt
+          echo "|--------|--------|------------|---------|---------|" >> commit_log.txt
 
           git log --since="$YESTERDAY 23:59" --until="$TODAY 23:59" --date=format:'%Y-%m-%d %H:%M:%S' \
             --pretty=format:"%h|%an|%ad|%s" | while IFS='|' read -r sha author date msg; do
-              # Replace PR number with markdown link if it matches
-              if [[ "$msg" =~ (.*)(Merge pull request #)([0-9]+)(.*) ]]; then
-                prefix="${BASH_REMATCH[1]}"
-                pr_number="${BASH_REMATCH[3]}"
-                suffix="${BASH_REMATCH[4]}"
-                pr_link="[#${pr_number}](https://github.com/$REPO_OWNER/$REPO_NAME/pull/$pr_number)"
-                msg="${prefix}Merge pull request ${pr_link}${suffix}"
+              pr_link=""
+
+              if [[ "$msg" =~ Merge\ pull\ request\ \#([0-9]+) ]]; then
+                pr_number="${BASH_REMATCH[1]}"
+                pr_link="https://github.com/$REPO_OWNER/$REPO_NAME/pull/$pr_number"
               fi
 
-              echo "| $sha | $author | $date | $msg |" >> commit_log.txt
+              # Escape pipes in message to avoid breaking the table
+              safe_msg=$(echo "$msg" | sed 's/|/\\|/g')
+
+              echo "| $sha | $author | $date | $safe_msg | $pr_link |" >> commit_log.txt
           done
 
           if [[ $(wc -l < commit_log.txt) -le 2 ]]; then
