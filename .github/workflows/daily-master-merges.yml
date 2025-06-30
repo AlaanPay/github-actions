@@ -1,4 +1,4 @@
-name: Daily Master Commits Report
+name: Daily Master Commits Report (IST + PR links in text)
 
 on:
   workflow_call:
@@ -16,25 +16,36 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get all commits to master in the last day
+      - name: Get all commits with PR links and IST time
         run: |
           YESTERDAY=$(date -u -d "yesterday" +%Y-%m-%d)
           TODAY=$(date -u +%Y-%m-%d)
+          REPO_NAME=${GITHUB_REPOSITORY##*/}  # e.g., core
+          REPO_OWNER=${GITHUB_REPOSITORY%%/*} # e.g., AlaanPay
 
           git checkout master
 
-          git log --since="$YESTERDAY 23:59" --until="$TODAY 23:59" \
-            --pretty=format:"| %h | %an | %s |" > commit_log.txt
+          export TZ=Asia/Kolkata
 
-          if [[ ! -s commit_log.txt ]]; then
+          echo "| Commit | Author | Time (IST) | Message |" > commit_log.txt
+          echo "|--------|--------|------------|---------|" >> commit_log.txt
+
+          git log --since="$YESTERDAY 23:59" --until="$TODAY 23:59" --date=format:'%Y-%m-%d %H:%M:%S' \
+            --pretty=format:"%h|%an|%ad|%s" | while IFS='|' read -r sha author date msg; do
+              # Replace PR number with markdown link if it matches
+              if [[ "$msg" =~ (.*)(Merge pull request #)([0-9]+)(.*) ]]; then
+                prefix="${BASH_REMATCH[1]}"
+                pr_number="${BASH_REMATCH[3]}"
+                suffix="${BASH_REMATCH[4]}"
+                pr_link="[#${pr_number}](https://github.com/$REPO_OWNER/$REPO_NAME/pull/$pr_number)"
+                msg="${prefix}Merge pull request ${pr_link}${suffix}"
+              fi
+
+              echo "| $sha | $author | $date | $msg |" >> commit_log.txt
+          done
+
+          if [[ $(wc -l < commit_log.txt) -le 2 ]]; then
             echo "No commits today." > commit_log.txt
-          else
-            {
-              echo "| Commit | Author | Message |"
-              echo "|--------|--------|---------|"
-              cat commit_log.txt
-            } > formatted_log.txt
-            mv formatted_log.txt commit_log.txt
           fi
 
       - name: Send Slack message
@@ -44,7 +55,7 @@ jobs:
         run: |
           COMMITS=$(cat commit_log.txt)
 
-          MESSAGE=$(printf "*📌 Daily Commit Report for \`$REPO\` → \`master\` branch*\n\`\`\`\n%s\n\`\`\`" "$COMMITS")
+          MESSAGE=$(printf "*📌 Daily Commit Report for \`$REPO\` → \`master\` branch (IST)*\n\`\`\`\n%s\n\`\`\`" "$COMMITS")
 
           jq -n --arg text "$MESSAGE" '{text: $text}' \
             | curl -X POST -H 'Content-type: application/json' --data @- "$SLACK_WEBHOOK_URL"
