@@ -1,4 +1,4 @@
-name: Daily Master Commits Report (IST + Type Column)
+name: Daily Master Commits Report (IST, Clean Table)
 
 on:
   workflow_call:
@@ -14,40 +14,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Needed to get full commit history
+          fetch-depth: 0  # Needed for full commit history
 
-      - name: Generate commit report (table with Type column)
+      - name: Generate aligned commit table (IST time)
         run: |
           YESTERDAY=$(date -u -d "yesterday" +%Y-%m-%d)
           TODAY=$(date -u +%Y-%m-%d)
-          export TZ=Asia/Kolkata
+          REPO_NAME=${GITHUB_REPOSITORY##*/}
+          REPO_OWNER=${GITHUB_REPOSITORY%%/*}
 
           git checkout master
-          OUTPUT=commit_log.txt
-          > $OUTPUT
 
-          # Table Header
-          printf "| %-8s | %-18s | %-19s | %-9s | %-50s |\n" "Commit" "Author" "Time (IST)" "Type" "Message" >> $OUTPUT
-          printf "|%s|\n" "$(printf '--------|--------------------|---------------------|-----------|--------------------------------------------------')" >> $OUTPUT
+          export TZ=Asia/Kolkata
 
-          # Git Log Parsing
+          OUTPUT_FILE=commit_log.txt
+          > $OUTPUT_FILE
+
+          printf "| %-8s | %-18s | %-19s | %-50s |\n" "Commit" "Author" "Time (IST)" "Message" >> $OUTPUT_FILE
+          printf "|%s|\n" "$(printf '--------|--------------------|---------------------|----------------------------------------------------')" >> $OUTPUT_FILE
+
           git log --since="$YESTERDAY 23:59" --until="$TODAY 23:59" --date=format:'%Y-%m-%d %H:%M:%S' \
             --pretty=format:"%h|%an|%ad|%s" | while IFS='|' read -r sha author date msg; do
               short_sha=$(echo "$sha" | cut -c1-8)
-              short_msg=$(echo "$msg" | cut -c1-50 | tr -d '\n\r')
+              short_msg=$(echo "$msg" | cut -c1-50)
+              safe_msg=$(echo "$short_msg" | tr -d '\n\r')
+              printf "| %-8s | %-18s | %-19s | %-50s |\n" "$short_sha" "$author" "$date" "$safe_msg"
+          done >> $OUTPUT_FILE
 
-              if [[ "$msg" =~ Merge\ pull\ request ]]; then
-                type="PR Merge"
-              else
-                type="Commit"
-              fi
-
-              printf "| %-8s | %-18s | %-19s | %-9s | %-50s |\n" "$short_sha" "$author" "$date" "$type" "$short_msg"
-          done >> $OUTPUT
-
-          # If no commits
-          if [[ $(wc -l < $OUTPUT) -le 2 ]]; then
-            echo "No commits today." > $OUTPUT
+          if [[ $(wc -l < $OUTPUT_FILE) -le 2 ]]; then
+            echo "No commits today." > $OUTPUT_FILE
           fi
 
       - name: Send Slack message
