@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Ensure full history is available for logs
 
       - name: Get merge commits
         id: get_merges
@@ -30,19 +30,25 @@ jobs:
           if [[ ! -s merge_log.txt ]]; then
             echo "No merges today." > merge_log.txt
           else
-            sed -i '1i| Commit | Author | Message |\n|--------|--------|---------|' merge_log.txt
+            {
+              echo "| Commit | Author | Message |"
+              echo "|--------|--------|---------|"
+              cat merge_log.txt
+            } > formatted_log.txt
+            mv formatted_log.txt merge_log.txt
           fi
 
-          echo "MERGES<<EOF" >> $GITHUB_ENV
-          cat merge_log.txt >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          # Escape newlines for environment variable compatibility
+          ESCAPED_MERGES=$(sed ':a;N;$!ba;s/\n/\\n/g' merge_log.txt)
+          echo "MERGES=$ESCAPED_MERGES" >> $GITHUB_ENV
 
       - name: Send Slack message
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           MERGES: ${{ env.MERGES }}
+          REPO: ${{ github.repository }}
         run: |
           jq -n \
-            --arg text "*📌 Daily Merge Report to \`master\`*:\n```$MERGES```" \
+            --arg text "*📌 Daily Merge Report for \`$REPO\` → \`master\` branch*\n\`\`\`$MERGES\`\`\`" \
             '{text: $text}' \
             | curl -X POST -H 'Content-type: application/json' --data @- "$SLACK_WEBHOOK_URL"
