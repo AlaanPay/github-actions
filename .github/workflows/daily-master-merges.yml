@@ -1,4 +1,4 @@
-name: Daily Master Commits Report (IST + PR Links in Column)
+name: Daily Master Commits Report (IST + Clickable PR #)
 
 on:
   workflow_call:
@@ -16,7 +16,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate commit report with IST and PR links
+      - name: Generate commit report with IST + PR short links
         run: |
           YESTERDAY=$(date -u -d "yesterday" +%Y-%m-%d)
           TODAY=$(date -u +%Y-%m-%d)
@@ -24,25 +24,24 @@ jobs:
           REPO_OWNER=${GITHUB_REPOSITORY%%/*}
 
           git checkout master
-
           export TZ=Asia/Kolkata
 
-          echo "| Commit | Author | Time (IST) | Message | PR Link |" > commit_log.txt
-          echo "|--------|--------|------------|---------|---------|" >> commit_log.txt
+          echo "| Commit | Author | Time (IST) | Message |" > commit_log.txt
+          echo "|--------|--------|------------|---------|" >> commit_log.txt
+          > pr_links.txt
 
           git log --since="$YESTERDAY 23:59" --until="$TODAY 23:59" --date=format:'%Y-%m-%d %H:%M:%S' \
             --pretty=format:"%h|%an|%ad|%s" | while IFS='|' read -r sha author date msg; do
-              pr_link=""
-
+              pr_display=""
               if [[ "$msg" =~ Merge\ pull\ request\ \#([0-9]+) ]]; then
                 pr_number="${BASH_REMATCH[1]}"
-                pr_link="https://github.com/$REPO_OWNER/$REPO_NAME/pull/$pr_number"
+                pr_url="https://github.com/$REPO_OWNER/$REPO_NAME/pull/$pr_number"
+                pr_display="#$pr_number"
+                echo "$pr_display → <$pr_url>" >> pr_links.txt
               fi
 
-              # Escape pipes in message to avoid breaking the table
               safe_msg=$(echo "$msg" | sed 's/|/\\|/g')
-
-              echo "| $sha | $author | $date | $safe_msg | $pr_link |" >> commit_log.txt
+              echo "| $sha | $author | $date | $safe_msg |" >> commit_log.txt
           done
 
           if [[ $(wc -l < commit_log.txt) -le 2 ]]; then
@@ -54,9 +53,10 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           REPO: ${{ github.repository }}
         run: |
-          COMMITS=$(cat commit_log.txt)
+          TABLE=$(cat commit_log.txt)
+          PRLINKS=$(cat pr_links.txt)
 
-          MESSAGE=$(printf "*📌 Daily Commit Report for \`$REPO\` → \`master\` branch (IST)*\n\`\`\`\n%s\n\`\`\`" "$COMMITS")
+          MESSAGE=$(printf "*📌 Daily Commit Report for \`$REPO\` → \`master\` branch (IST)*\n\`\`\`\n%s\n\`\`\`\n\n*🔗 PR Links:*\n%s" "$TABLE" "$PRLINKS")
 
           jq -n --arg text "$MESSAGE" '{text: $text}' \
             | curl -X POST -H 'Content-type: application/json' --data @- "$SLACK_WEBHOOK_URL"
