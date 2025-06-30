@@ -16,7 +16,7 @@ jobs:
         with:
           payload: |
             {
-              "text": ":white_check_mark: PR Merged to *master* in `${{ github.repository }}`",
+              "text": ":white_check_mark: PR Merged to master in {{ github.repository }}",
               "blocks": [
                 {
                   "type": "section",
@@ -27,28 +27,22 @@ jobs:
                 },
                 {
                   "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Title:* `${{ github.event.pull_request.title }}`"
-                  }
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Link:* <${{ github.event.pull_request.html_url }}|#${{ github.event.pull_request.number }} – View PR on GitHub>"
-                  }
-                },
-                {
-                  "type": "context",
-                  "elements": [
+                  "fields": [
                     {
                       "type": "mrkdwn",
-                      "text": "*Author:* `${{ github.event.pull_request.user.login }}`"
+                      "text": "*Title:*\n${{ github.event.pull_request.title }}"
                     },
                     {
                       "type": "mrkdwn",
-                      "text": "*Merged By:* `${{ github.event.pull_request.merged_by.login }}`"
+                      "text": "*PR:*\n<${{ github.event.pull_request.html_url }}|#${{ github.event.pull_request.number }}>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Author:*\n${{ github.event.pull_request.user.login }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Merged By:*\n${{ github.event.pull_request.merged_by.login }}"
                     }
                   ]
                 }
