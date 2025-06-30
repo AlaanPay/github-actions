@@ -14,10 +14,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Ensure full history is available for logs
+          fetch-depth: 0  # Needed to access full commit history
 
-      - name: Get merge commits
-        id: get_merges
+      - name: Get merge commits to master
         run: |
           YESTERDAY=$(date -u -d "yesterday" +%Y-%m-%d)
           TODAY=$(date -u +%Y-%m-%d)
@@ -38,17 +37,14 @@ jobs:
             mv formatted_log.txt merge_log.txt
           fi
 
-          # Escape newlines for environment variable compatibility
-          ESCAPED_MERGES=$(sed ':a;N;$!ba;s/\n/\\n/g' merge_log.txt)
-          echo "MERGES=$ESCAPED_MERGES" >> $GITHUB_ENV
-
       - name: Send Slack message
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          MERGES: ${{ env.MERGES }}
           REPO: ${{ github.repository }}
         run: |
-          jq -n \
-            --arg text "*📌 Daily Merge Report for \`$REPO\` → \`master\` branch*\n\`\`\`$MERGES\`\`\`" \
-            '{text: $text}' \
+          MERGES=$(cat merge_log.txt)
+
+          MESSAGE=$(printf "*📌 Daily Merge Report for \`$REPO\` → \`master\` branch*\n\`\`\`\n%s\n\`\`\`" "$MERGES")
+
+          jq -n --arg text "$MESSAGE" '{text: $text}' \
             | curl -X POST -H 'Content-type: application/json' --data @- "$SLACK_WEBHOOK_URL"
