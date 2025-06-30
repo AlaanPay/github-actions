@@ -16,7 +16,7 @@ jobs:
         with:
           payload: |
             {
-              "text": ":white_check_mark: PR Merged to master in {{ github.repository }}",
+              "text": ":white_check_mark: PR Merged to master in ${{ github.repository }}",
               "blocks": [
                 {
                   "type": "section",
