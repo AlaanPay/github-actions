@@ -1,4 +1,4 @@
-name: Daily Master Commits Report (IST, Clean Table)
+name: Daily Master Commits Report
 
 on:
   workflow_call:
@@ -14,35 +14,45 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Needed for full commit history
+          fetch-depth: 0
 
-      - name: Generate aligned commit table (IST time)
+      - name: Generate aligned commit table with PR Approvers (IST)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          YESTERDAY=$(date -u -d "yesterday" +%Y-%m-%d)
-          TODAY=$(date -u +%Y-%m-%d)
-          REPO_NAME=${GITHUB_REPOSITORY##*/}
-          REPO_OWNER=${GITHUB_REPOSITORY%%/*}
-
-          git checkout master
-
+          REPO=${GITHUB_REPOSITORY}
           export TZ=Asia/Kolkata
+          NOW=$(date +%s)
+          START_TIME=$(date -d "@$((NOW - 86400))" +%Y-%m-%dT%H:%M:%S)
+          COMMIT_RANGE=$(git log --since="$START_TIME" --format="%H")
 
           OUTPUT_FILE=commit_log.txt
           > $OUTPUT_FILE
 
-          printf "| %-8s | %-18s | %-19s | %-50s |\n" "Commit" "Author" "Time (IST)" "Message" >> $OUTPUT_FILE
-          printf "|%s|\n" "$(printf '--------|--------------------|---------------------|----------------------------------------------------')" >> $OUTPUT_FILE
+          printf "| %-8s | %-18s | %-25s | %-18s | %-50s |\n" "Commit" "Author" "Time (IST)" "Approver(s)" "Message" >> $OUTPUT_FILE
+          printf "|%s|\n" "$(printf '--------|--------------------|---------------------------|--------------------|----------------------------------------------------')" >> $OUTPUT_FILE
 
-          git log --since="$YESTERDAY 23:59" --until="$TODAY 23:59" --date=format:'%Y-%m-%d %H:%M:%S' \
-            --pretty=format:"%h|%an|%ad|%s" | while IFS='|' read -r sha author date msg; do
-              short_sha=$(echo "$sha" | cut -c1-8)
-              short_msg=$(echo "$msg" | cut -c1-50)
-              safe_msg=$(echo "$short_msg" | tr -d '\n\r')
-              printf "| %-8s | %-18s | %-19s | %-50s |\n" "$short_sha" "$author" "$date" "$safe_msg"
+          for sha in $COMMIT_RANGE; do
+            AUTHOR=$(git show -s --format='%an' $sha)
+            DATE=$(git show -s --date=format:'%Y-%m-%d %H:%M:%S' --format='%ad' $sha)
+            MSG=$(git show -s --format='%s' $sha | cut -c1-50 | tr -d '\n\r')
+            SHORT_SHA=$(echo "$sha" | cut -c1-8)
+
+            # Try to find PR via GitHub API
+            PR_JSON=$(gh api /repos/$REPO/commits/$sha/pulls --jq '.[0]')
+            if [[ -n "$PR_JSON" ]]; then
+              PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
+              APPROVERS=$(gh api /repos/$REPO/pulls/$PR_NUMBER/reviews \
+                | jq -r '[.[] | select(.state == "APPROVED") | .user.login] | unique | join(", ")')
+            else
+              APPROVERS="—"
+            fi
+
+            printf "| %-8s | %-18s | %-25s | %-18s | %-50s |\n" "$SHORT_SHA" "$AUTHOR" "$DATE" "$APPROVERS" "$MSG"
           done >> $OUTPUT_FILE
 
           if [[ $(wc -l < $OUTPUT_FILE) -le 2 ]]; then
-            echo "No commits today." > $OUTPUT_FILE
+            echo "No commits in the last 24 hours." > $OUTPUT_FILE
           fi
 
       - name: Send Slack message
@@ -51,8 +61,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           COMMITS=$(cat commit_log.txt)
-
-          MESSAGE=$(printf "*📌 Daily Commit Report for \`$REPO\` → \`master\` branch (IST)*\n\`\`\`\n%s\n\`\`\`" "$COMMITS")
+          MESSAGE=$(printf "*📌 Daily Commit Report for \`$REPO\` → \`master\` branch (last 24h, IST)*\n\`\`\`\n%s\n\`\`\`" "$COMMITS")
 
           jq -n --arg text "$MESSAGE" '{text: $text}' \
             | curl -X POST -H 'Content-type: application/json' --data @- "$SLACK_WEBHOOK_URL"
